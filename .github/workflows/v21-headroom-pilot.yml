@@ -1,0 +1,78 @@
+name: "V21 | Headroom artifact gate — preparation ONLY"
+
+# Manual metadata-only preflight approved for preparation; no Headroom wheel download, install, import or runtime test.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: skills-headroom-v21-artifact-preparation
+  cancel-in-progress: false
+
+jobs:
+  provenance-and-artifact-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Scope and version check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          echo "SKILLS_V21_SCOPE=PREPARATION_ONLY"
+          echo "HEADROOM_EXECUTION=NOT_AUTHORIZED"
+          echo "V20_SCOPED_PASS=PRESERVED"
+          echo "G1_PROVENANCE=OPEN"
+          echo "G2_SECURITY_PASS=NOT_GRANTED"
+
+      - name: Inspect official PyPI metadata without downloading packages
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib, json, urllib.request, sys
+          url = 'https://pypi.org/pypi/headroom-ai/0.42.0/json'
+          with urllib.request.urlopen(urllib.request.Request(
+              url, headers={'User-Agent': 'SKILLS-V21-metadata-review/1.0'}), timeout=20) as response:
+              data = json.load(response)
+          assert data['info']['version'] == '0.42.0'
+          items = []
+          for f in data['urls']:
+              name = f['filename']
+              if not name.endswith('.whl') or 'x86_64' not in name:
+                  continue
+              if not ('manylinux' in name or 'linux' in name):
+                  continue
+              digest = f['digests']['sha256']
+              assert len(digest) == 64 and all(c in '0123456789abcdef' for c in digest)
+              items.append((name, digest, f['size']))
+          assert items, 'No Linux x86_64 wheel found'
+          print('Official registry metadata only; artifact not downloaded or verified cryptographically.')
+          print('PYPI_WHEEL_METADATA:')
+          for name, digest, size in items:
+              print(json.dumps({'filename':name,'registry_sha256':digest,'bytes':size}, sort_keys=True))
+          print('Declared dependencies (not resolved nor audited):')
+          for requirement in data.get('info',{}).get('requires_dist') or []:
+              print('Requires-Dist: ' + requirement)
+          with open('/tmp/v21-preflight-summary.txt','w',encoding='utf-8') as out:
+              out.write('V21_METADATA_READ=PASS; NO_ARTIFACT_DOWNLOAD; NO_RUNTIME\n')
+              for name,digest,size in items:
+                  out.write(f'{name} {digest} {size}\n')
+          PY
+          cat /tmp/v21-preflight-summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record mandatory follow-up gates
+        shell: bash
+        run: |
+          {
+            echo '## V21 status: DOCUMENTARY_PREPARATION_ONLY'
+            echo ''
+            echo '- Source: PyPI JSON metadata, no wheel or dependency bytes.'
+            echo '- SHA256 above are registry assertions, NOT recalculated artifact hashes.'
+            echo '- No source-to-binary equivalence or transitive license closure proven.'
+            echo '- The synthetic harness is staged only on proposal branch and is NOT executed.'
+            echo '- A separate Owner-approved, immutable wheelhouse + OCI image build gate is required before isolated execution.'
+            echo '- No Headroom imports, downloads, installations, models, credentials or real transcripts.'
+            echo '- V20 scoped result preserved. SKILLS macro-phase remains 45% provisional.'
+          } >> "$GITHUB_STEP_SUMMARY"
