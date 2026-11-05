@@ -47,7 +47,6 @@ jobs:
             --memory-swap 2g \
             --cpus 1 \
             --ipc private \
-            --pid private \
             --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
             --entrypoint /bin/sh \
             "${image}" -euc '
